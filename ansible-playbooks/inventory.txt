@@ -1,0 +1,1 @@
+edge ansible_host=<host> system_display_name=<custom_node_name> ansible_user=<username> ansible_ssh_pass=<password>

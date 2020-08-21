@@ -1,0 +1,128 @@
+-
+  name: Bootstrap remote nodes with CP4D edge application
+  hosts: localhost
+  vars:
+    webapp_url: "<hub_host>"
+    username: "<hub_username>"
+    password: "<hub_password>"
+  tasks:
+    - name: Authorize to hub instance
+      uri:
+        url: "https://{{ webapp_url }}/icp4d-api/v1/authorize"
+        method: POST
+        return_content: yes
+        body: "{ \"username\": \"{{ username }}\", \"password\": \"{{ password }}\" }"
+        body_format: json
+        validate_certs: no
+      register: data
+      # failed_when: <optional condition based on JSON returned content>
+
+    - name: Parse bearer token from the above response
+      set_fact:
+        token: "{{data.json.token}}"
+
+    - name: Download RPM
+      uri:
+        url: "https://{{ webapp_url }}/edge-core/v1/edge_applications/installer"
+        dest: /tmp/cp4d_edge_installer.rpm
+        method: GET
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{token}}"
+
+    - name: Download Certs
+      uri:
+        url: "https://{{ webapp_url }}/edge-core/v1/edge_applications/certs"
+        dest: /tmp/certs.tar
+        method: GET
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{token}}"
+    
+-
+### Set hub_version environment variable to 3.x or 4.x depending on the Openshift cluster version
+  name: Deploy and install edge bedrock
+  hosts: all
+  vars:
+    hub_version: "4.x"
+    logrotate:
+      edge_file: "/etc/logrotate.d/edge"
+  tasks:
+    - name: Install dependencies
+      yum:
+        name: podman
+        state: present
+    - name: "Add edge app logrotate rules"
+      template:
+        src: logrotate_edge.j2
+        dest: "{{ logrotate.edge_file }}"
+        owner: root
+        group: root
+        mode: '0644'
+        force: yes
+    - name: Set up log rotate cron
+      cron:
+        name: Hourly log rotation
+        minute: "0"
+        hour: "*"
+        user: root
+        job: "/usr/sbin/logrotate {{ logrotate.edge_file }} > /dev/null"
+    - name: Upload RPM to the edge node
+      copy:
+        src: /tmp/cp4d_edge_installer.rpm
+        dest: /tmp
+    - name: Upload Certs to the edge node
+      unarchive:
+        src: /tmp/certs.tar
+        dest: /tmp
+
+#### For IEAM nodes, add an environment variable ENABLE_IEAM here assigned to any value. Absence indicates installation of an non-IEAM edge node.
+    - name: Install RPM for CP4D Edge application
+      yum:
+        name: /tmp/cp4d_edge_installer.rpm
+        state: present
+      environment:
+        #ENABLE_IEAM: "true"
+        CERTS_DIR: "/tmp/certs"
+        HUB_VERSION: "{{ hub_version }}"
+        EDGEHOST: "{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}"
+    - name: Waiting for setup to complete
+      pause:
+        seconds: 10
+    - name: Tether the edge node to Hub instance
+      uri:
+        url: "https://127.0.0.1:4444/v1/edge_systems"
+        method: PUT
+        return_content: yes
+        body:
+          display_name: "{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}"
+        body_format: json
+        validate_certs: no
+        headers:
+          Authorization: "Bearer {{hostvars['localhost']['token']}}"
+      register: data
+
+-
+  name: Cleanup of local node
+  hosts: localhost
+  tasks:
+    - name: Removing
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+      - /tmp/certs.tar
+      - /tmp/cp4d_edge_installer.rpm
+
+- 
+  name: Cleanup of remote node
+  hosts: all
+  tasks:
+    - name: Cleanup of remote node
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /tmp/certs.tar
+        - /tmp/certs
+        - /tmp/cp4d_edge_installer.rpm
