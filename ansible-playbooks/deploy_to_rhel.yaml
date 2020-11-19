@@ -95,7 +95,7 @@
         method: PUT
         return_content: yes
         body:
-          display_name: "{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}"
+          display_name: "{{ system_display_name }}"
         body_format: json
         validate_certs: no
         headers:

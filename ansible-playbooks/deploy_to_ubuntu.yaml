@@ -99,7 +99,7 @@
     - name: Convert rpm to deb package
       raw: sudo alien -k /tmp/cp4d_edge_installer.rpm
     - name: Extract deb package
-      shell: "apt install /root/cpd-edge_1.0.0-1_all.deb"
+      shell: "apt install /root/cpd-edge_1.1.0-1_all.deb"
 
 #### For IEAM nodes, add an environment variable ENABLE_IEAM here assigned to any value. Absence indicates installation of an non-IEAM edge node.
     - name: Start the coreapi server
@@ -118,7 +118,7 @@
         method: PUT
         return_content: yes
         body:
-          display_name: "{{hostvars[inventory_hostname]['ansible_default_ipv4']['address']}}"
+          display_name: "{{ system_display_name }}"
         body_format: json
         validate_certs: no
         headers:
@@ -151,4 +151,4 @@
         - /tmp/certs.tar
         - /tmp/certs
         - /tmp/cp4d_edge_installer.rpm
-        - /root/cpd-edge_1.0.0-1_all.deb
+        - /root/cpd-edge_1.1.0-1_all.deb
